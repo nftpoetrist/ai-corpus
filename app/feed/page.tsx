@@ -294,6 +294,7 @@ export default function DiscoveryPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { account } = useWallet();
   const [allPosts, setAllPosts] = useState<Post[]>(() => {
+    if (typeof window === "undefined") return FEED_POSTS;
     const uploads = getUploads();
     const initUsername = localStorage.getItem("ai_corpus_username") ?? "";
     const initHandle   = localStorage.getItem("ai_corpus_handle")  ?? "me";
@@ -316,7 +317,10 @@ export default function DiscoveryPage() {
     if (postId) setTargetPostId(postId);
   }, []);
 
-  const [ownedIds, setOwnedIds] = useState<Set<string>>(() => new Set(getUploads().map(u => u.id)));
+  const [ownedIds, setOwnedIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set<string>();
+    return new Set(getUploads().map(u => u.id));
+  });
 
   const buildPosts = (address: string) => {
     const username = (typeof window !== "undefined" ? localStorage.getItem("ai_corpus_username") : null) ?? "";
