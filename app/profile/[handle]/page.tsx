@@ -19,9 +19,10 @@ function deriveAvatar(address: string) {
 
 function ProfileAvatar({ address, size = 80 }: { address: string; size?: number }) {
   const derived = deriveAvatar(address);
-  const shape  = localStorage.getItem("ai_corpus_avatar_shape")  || derived.shape;
-  const color1 = localStorage.getItem("ai_corpus_avatar_color1") || derived.colors[0];
-  const color2 = localStorage.getItem("ai_corpus_avatar_color2") || derived.colors[1];
+  const ls = typeof window !== "undefined" ? window.localStorage : null;
+  const shape  = ls?.getItem("ai_corpus_avatar_shape")  || derived.shape;
+  const color1 = ls?.getItem("ai_corpus_avatar_color1") || derived.colors[0];
+  const color2 = ls?.getItem("ai_corpus_avatar_color2") || derived.colors[1];
   const colors: [string, string] = [color1, color2];
   const gid = `pa-${address.slice(2, 10)}`;
   const c = size / 2, r = size / 2 - 2;
