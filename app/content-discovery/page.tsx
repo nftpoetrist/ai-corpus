@@ -279,7 +279,7 @@ function GlassFileCard({ post, isOwned, onDelete }: { post: Post; isOwned: boole
         <div className="flex items-end justify-between">
           <div className="text-white/35" style={{ fontSize: "clamp(0.6rem, 1vw, 0.72rem)" }}>
             <div className="font-mono">{post.blobId}</div>
-            <div className="mt-0.5">{post.fileSize} · {post.lines.toLocaleString()} lines · {post.reads} reads · {post.createdAt}</div>
+            <div className="mt-0.5">{post.fileSize} · {post.lines.toLocaleString("en-US")} lines · {post.reads} reads · {post.createdAt}</div>
           </div>
           <ActionButtons post={post} isOwned={isOwned} onDelete={onDelete} />
         </div>
@@ -356,8 +356,17 @@ export default function DiscoveryPage() {
     setAllPosts([...uploadedPosts, ...FEED_POSTS]);
   };
 
+  // Mount'ta her zaman localStorage'dan oku (wallet bağlı olsun ya da olmasın)
   useEffect(() => {
     buildPosts(account?.address?.toString() ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Wallet bağlandığında / kesildiğinde de güncelle
+  useEffect(() => {
+    if (account !== undefined) {
+      buildPosts(account?.address?.toString() ?? "");
+    }
   }, [account]);
 
   useEffect(() => {
@@ -379,7 +388,7 @@ export default function DiscoveryPage() {
 
   return (
     <>
-      <Nav />
+      <Nav activePage="content discovery" />
       <div className="fixed top-28 left-1/2 -translate-x-1/2 z-40 text-white/60 font-semibold tracking-widest" style={{ fontSize: "1.1rem" }}>
         {currentIndex + 1} / {allPosts.length}
       </div>

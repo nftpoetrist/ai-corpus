@@ -41,7 +41,7 @@ function Hero() {
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
         className="flex flex-col sm:flex-row items-center gap-4" style={{ marginTop: "1.8rem" }}>
-        <Link href="/feed">
+        <Link href="/content-discovery">
           <motion.button whileHover={{ scale: 1.07, boxShadow: "0 0 40px rgba(139,92,246,0.55), 0 0 80px rgba(217,70,239,0.2)" }} whileTap={{ scale: 0.96 }} transition={{ duration: 0.15, ease: "easeOut" }}
             className="flex items-center justify-center font-semibold text-white rounded-full bg-gradient-to-r from-purple-600 to-pink-600"
             style={{ width: 140, height: 39, fontSize: 13 }}>
@@ -165,7 +165,7 @@ function StripCard({ post, uid }: { post: Post; uid: string }) {
           <div style={{ fontFamily: "monospace", fontSize: 8, color: "rgba(255,255,255,0.2)" }}>
             {post.blobId.slice(0, 20)}…
           </div>
-          <Link href={`/feed?post=${post.id}`}>
+          <Link href={`/content-discovery?post=${post.id}`}>
             <motion.button whileHover={{ scale: 1.06, boxShadow: "0 0 16px rgba(139,92,246,0.5)" }} whileTap={{ scale: 0.95 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
               style={{ fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 8,

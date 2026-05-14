@@ -122,6 +122,7 @@ export type UploadedPost = {
   blobId: string;
   createdAt: string;
   tags: string[];
+  visibility?: "Public" | "Unlisted" | "Private";
 };
 
 export function getUploads(): UploadedPost[] {

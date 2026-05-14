@@ -87,8 +87,8 @@ export default function PostView() {
       {/* Top action bar */}
       <div className="sticky top-20 z-40 border-b border-white/5 bg-black/30 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link href="/feed" className="flex items-center gap-2 text-white/45 hover:text-white text-sm transition-colors">
-            <span>←</span><span>Feed</span>
+          <Link href="/content-discovery" className="flex items-center gap-2 text-white/45 hover:text-white text-sm transition-colors">
+            <span>←</span><span>Content Discovery</span>
           </Link>
           <div className="flex items-center gap-2">
             <button onClick={() => setTipOpen(true)}

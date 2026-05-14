@@ -365,6 +365,12 @@ function WalletDropdown() {
 export function Nav({ activePage = "" }: { activePage?: string }) {
   const { connected } = useWallet();
   const [showModal, setShowModal] = useState(false);
+  const [profileHandle, setProfileHandle] = useState("me");
+
+  useEffect(() => {
+    const handle = localStorage.getItem("ai_corpus_handle") || localStorage.getItem("ai_corpus_username") || "me";
+    setProfileHandle(handle);
+  }, []);
 
   return (
     <>
@@ -383,9 +389,9 @@ export function Nav({ activePage = "" }: { activePage?: string }) {
           <div className="hidden md:flex items-center gap-8 absolute left-0 right-0 justify-center pointer-events-none" style={{ top: "50%", transform: "translateY(-50%) translateX(-15px)" }}>
             <div className="flex items-center gap-8 pointer-events-auto">
             {[
-              { label: "CONTENT DISCOVERY", href: "/feed" },
+              { label: "CONTENT DISCOVERY", href: "/content-discovery" },
               { label: "UPLOAD", href: "/upload" },
-              { label: "PROFILE", href: "/profile/achen" },
+              { label: "PROFILE", href: `/profile/${profileHandle}` },
             ].map((item) => (
               <Link key={item.label} href={item.href}
                 className={`text-xs font-medium tracking-widest transition-colors duration-200 ${activePage === item.label.toLowerCase() ? "text-white" : "text-white/60 hover:text-white"}`}>
