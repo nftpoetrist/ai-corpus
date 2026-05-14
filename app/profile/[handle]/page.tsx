@@ -73,45 +73,118 @@ function ProfileAvatar({ address, size = 80 }: { address: string; size?: number 
 import { FEED_POSTS, getSavedIds, toggleSaved, getUploads, deleteUpload } from "@/lib/posts";
 import type { Post, UploadedPost } from "@/lib/posts";
 
-/* ─── Mini Feed Card (saved posts) ─────────────────────────────── */
+/* ─── Glass Saved Card ──────────────────────────────────────────── */
 function SavedCard({ post, onUnsave }: { post: Post; onUnsave: (id: string) => void }) {
-  const [saved, setSaved] = useState(true);
-
-  const handleSave = () => {
-    toggleSaved(post.id);
-    setSaved(false);
-    onUnsave(post.id);
-  };
-
-  if (!saved) return null;
+  const p = `sc-${post.id}`;
 
   return (
-    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
-      className="relative rounded-2xl overflow-hidden"
-      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="absolute top-0 right-0 w-6 h-6 overflow-hidden">
-        <div className="absolute top-0 right-0 w-0 h-0"
-          style={{ borderStyle: "solid", borderWidth: "0 24px 24px 0", borderColor: "transparent rgba(139,92,246,0.2) transparent transparent" }} />
-      </div>
-      <div style={{ padding: "14px 18px" }}>
-        <div className="flex gap-1.5 flex-wrap mb-2">
-          {post.tags.map(tag => (
-            <span key={tag} className="text-[9px] font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.25)", color: "#c4b5fd" }}>
+    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+      style={{ position: "relative", aspectRatio: "1000 / 560", isolation: "isolate" }}>
+
+      {/* Glass SVG shell */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1000 560"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ filter: "drop-shadow(0 16px 32px rgba(0,0,0,0.5)) drop-shadow(0 6px 14px rgba(100,70,140,0.18))" }}>
+        <defs>
+          <linearGradient id={`bf-${p}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#D6BBD3" stopOpacity="0.52" /><stop offset="0.35" stopColor="#A98DA8" stopOpacity="0.52" />
+            <stop offset="0.55" stopColor="#7B6582" stopOpacity="0.58" /><stop offset="1" stopColor="#3C2E45" stopOpacity="0.70" />
+          </linearGradient>
+          <radialGradient id={`bg-${p}`} cx="0.5" cy="0.35" r="0.85">
+            <stop offset="0" stopColor="#EAD6EB" stopOpacity="0.38" /><stop offset="0.7" stopColor="#7A6280" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id={`sh-${p}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.50" /><stop offset="0.6" stopColor="#FFFFFF" stopOpacity="0.04" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id={`ro-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.90" /><stop offset="0.4" stopColor="#E2CFE6" stopOpacity="0.45" />
+            <stop offset="0.75" stopColor="#FFFFFF" stopOpacity="0.15" /><stop offset="1" stopColor="#FFFFFF" stopOpacity="0.50" />
+          </linearGradient>
+          <linearGradient id={`rm-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.50" /><stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.08" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.25" />
+          </linearGradient>
+          <linearGradient id={`ri-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.35" /><stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.05" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.15" />
+          </linearGradient>
+          <linearGradient id={`cf-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#F2D8EE" stopOpacity="0.95" /><stop offset="0.55" stopColor="#B596B4" stopOpacity="0.95" />
+            <stop offset="1" stopColor="#5A4263" stopOpacity="0.95" />
+          </linearGradient>
+          <linearGradient id={`ce-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.95" /><stop offset="1" stopColor="#FFFFFF" stopOpacity="0.22" />
+          </linearGradient>
+          <radialGradient id={`cs-${p}`} cx="0.4" cy="0.2" r="0.9">
+            <stop offset="0" stopColor="#000000" stopOpacity="0.38" /><stop offset="1" stopColor="#000000" stopOpacity="0" />
+          </radialGradient>
+          <filter id={`hl-${p}`} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="42" /></filter>
+          <clipPath id={`bc-${p}`}><path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" /></clipPath>
+        </defs>
+        <ellipse cx="500" cy="300" rx="460" ry="210" fill="#9D7FB0" opacity="0.10" filter={`url(#hl-${p})`} />
+        <path d="M 50 22 H 880 L 974 116 V 498 Q 974 530 942 530 H 50 Q 18 530 18 498 V 54 Q 18 22 50 22 Z" fill="#2A2138" fillOpacity="0.42" />
+        <path d="M 50 22 H 880 L 974 116 V 498 Q 974 530 942 530 H 50 Q 18 530 18 498 V 54 Q 18 22 50 22 Z" fill="none" stroke={`url(#ro-${p})`} strokeWidth="1.6" />
+        <path d="M 56 26 H 882 L 970 114 V 494 Q 970 524 940 524 H 56 Q 24 524 24 494 V 58 Q 24 26 56 26 Z" fill="none" stroke={`url(#rm-${p})`} strokeWidth="1.2" />
+        <path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" fill={`url(#bf-${p})`} />
+        <path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" fill={`url(#bg-${p})`} />
+        <g clipPath={`url(#bc-${p})`}>
+          <path d="M 30 30 H 964 V 300 H 30 Z" fill={`url(#sh-${p})`} opacity="0.9" />
+          <path d="M 884 110 L 884 30 L 964 110 Z" fill={`url(#cs-${p})`} transform="translate(-6 8)" />
+        </g>
+        <path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" fill="none" stroke={`url(#ri-${p})`} strokeWidth="1.2" />
+        <path d="M 76 46 H 878 L 948 116 V 480 Q 948 504 924 504 H 76 Q 46 504 46 480 V 76 Q 46 46 76 46 Z" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <path d="M 884 30 L 964 110 L 884 110 Z" fill={`url(#cf-${p})`} />
+        <path d="M 884 30 L 964 110" stroke={`url(#ce-${p})`} strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M 884 110 L 964 110" stroke="rgba(255,255,255,0.42)" strokeWidth="1" strokeLinecap="round" />
+        <path d="M 884 30 L 884 110" stroke="rgba(255,255,255,0.38)" strokeWidth="1" strokeLinecap="round" />
+        <path d="M 894 40 L 954 100 L 894 100 Z" fill="rgba(255,230,245,0.16)" />
+        <path d="M 892 38 L 956 102" stroke="rgba(255,255,255,0.82)" strokeWidth="1.2" strokeLinecap="round" opacity="0.82" />
+        <path d="M 70 24 H 878" stroke="rgba(255,255,255,0.55)" strokeWidth="1" strokeLinecap="round" opacity="0.55" />
+        <path d="M 70 528 H 932" stroke="rgba(255,255,255,0.22)" strokeWidth="0.8" strokeLinecap="round" opacity="0.45" />
+      </svg>
+
+      {/* Content */}
+      <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: "6% 14% 6% 6%" }}>
+
+        {/* Top: author + tags */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>@{post.author.handle}</span>
+          {post.tags.slice(0, 2).map(tag => (
+            <span key={tag} style={{ fontSize: 8, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
+              background: "rgba(139,92,246,0.22)", border: "1px solid rgba(139,92,246,0.32)", color: "#d8b4fe", letterSpacing: "0.04em" }}>
               {tag}
             </span>
           ))}
         </div>
-        <h3 className="text-white font-semibold text-sm leading-snug mb-2">{post.title}</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-white/30 text-[10px]">@{post.author.handle} · {post.createdAt}</div>
-            <div className="font-mono text-[9px] text-purple-400/40 mt-0.5">{post.blobId}</div>
+
+        {/* Center: title + summary */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "6px 0" }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", lineHeight: 1.3, marginBottom: 5,
+            overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" as const }}>
+            {post.title}
           </div>
-          <motion.button whileTap={{ scale: 0.88 }} whileHover={{ scale: 1.06 }} transition={{ duration: 0.15, ease: "easeOut" }} onClick={handleSave}
-            className="flex items-center gap-1.5 rounded-xl text-xs font-medium border transition-all"
-            style={{ padding: "5px 10px", background: "rgba(139,92,246,0.2)", borderColor: "rgba(139,92,246,0.4)", color: "#c4b5fd" }}>
-            <span>⊞</span><span>Saved</span>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", lineHeight: 1.65,
+            overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+            {post.summary}
+          </div>
+        </div>
+
+        {/* Bottom: blob ID + unsave button */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontFamily: "monospace", fontSize: 8, color: "rgba(255,255,255,0.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%" }}>
+            {post.blobId.slice(0, 22)}…
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} transition={{ duration: 0.15, ease: "easeOut" }}
+            onClick={() => { toggleSaved(post.id); onUnsave(post.id); }}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8,
+              fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+              background: "rgba(139,92,246,0.18)", border: "1px solid rgba(139,92,246,0.38)", color: "#c4b5fd" }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+            Saved
           </motion.button>
         </div>
       </div>
@@ -119,42 +192,145 @@ function SavedCard({ post, onUnsave }: { post: Post; onUnsave: (id: string) => v
   );
 }
 
-/* ─── Mini Upload Card (my uploads) ────────────────────────────── */
+/* ─── Glass Upload Card (my uploads) ───────────────────────────── */
 function UploadCard({ post, onDelete }: { post: UploadedPost; onDelete: () => void }) {
-  const handleDelete = () => { deleteUpload(post.id); onDelete(); };
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const p = `uc-${post.id}`;
+  const vis = post.visibility ?? "Public";
+  const visColor = vis === "Public" ? { bg: "rgba(34,197,94,0.18)", border: "rgba(34,197,94,0.35)", text: "#4ade80", icon: "🌐" }
+    : vis === "Unlisted" ? { bg: "rgba(251,191,36,0.15)", border: "rgba(251,191,36,0.3)", text: "#fbbf24", icon: "🔗" }
+    : { bg: "rgba(239,68,68,0.15)", border: "rgba(239,68,68,0.3)", text: "#f87171", icon: "🔒" };
+
+  const handleDelete = () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    deleteUpload(post.id);
+    onDelete();
+  };
 
   return (
-    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
-      className="relative rounded-2xl overflow-hidden"
-      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="absolute top-0 right-0 w-6 h-6 overflow-hidden">
-        <div className="absolute top-0 right-0 w-0 h-0"
-          style={{ borderStyle: "solid", borderWidth: "0 24px 24px 0", borderColor: "transparent rgba(139,92,246,0.2) transparent transparent" }} />
-      </div>
-      <div style={{ padding: "14px 18px" }}>
-        <h3 className="text-white font-semibold text-sm leading-snug mb-1.5">{post.title}</h3>
-        <p className="text-white/40 text-xs leading-relaxed mb-2">{post.summary}</p>
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-white/25 text-[10px]">{post.fileName} · {post.createdAt}</div>
-            <div className="font-mono text-[9px] text-purple-400/40 mt-0.5 truncate">{post.blobId}</div>
+    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+      style={{ position: "relative", aspectRatio: "1000 / 560", isolation: "isolate" }}>
+
+      {/* Glass SVG shell */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1000 560"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ filter: "drop-shadow(0 16px 32px rgba(0,0,0,0.5)) drop-shadow(0 6px 14px rgba(100,70,140,0.18))" }}>
+        <defs>
+          <linearGradient id={`bf-${p}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#D6BBD3" stopOpacity="0.52" />
+            <stop offset="0.35" stopColor="#A98DA8" stopOpacity="0.52" />
+            <stop offset="0.55" stopColor="#7B6582" stopOpacity="0.58" />
+            <stop offset="1" stopColor="#3C2E45" stopOpacity="0.70" />
+          </linearGradient>
+          <radialGradient id={`bg-${p}`} cx="0.5" cy="0.35" r="0.85">
+            <stop offset="0" stopColor="#EAD6EB" stopOpacity="0.38" />
+            <stop offset="0.7" stopColor="#7A6280" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id={`sh-${p}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.50" />
+            <stop offset="0.6" stopColor="#FFFFFF" stopOpacity="0.04" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id={`ro-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.90" />
+            <stop offset="0.4" stopColor="#E2CFE6" stopOpacity="0.45" />
+            <stop offset="0.75" stopColor="#FFFFFF" stopOpacity="0.15" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.50" />
+          </linearGradient>
+          <linearGradient id={`rm-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.50" />
+            <stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.08" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.25" />
+          </linearGradient>
+          <linearGradient id={`ri-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.35" />
+            <stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.05" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.15" />
+          </linearGradient>
+          <linearGradient id={`cf-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#F2D8EE" stopOpacity="0.95" />
+            <stop offset="0.55" stopColor="#B596B4" stopOpacity="0.95" />
+            <stop offset="1" stopColor="#5A4263" stopOpacity="0.95" />
+          </linearGradient>
+          <linearGradient id={`ce-${p}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.95" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.22" />
+          </linearGradient>
+          <radialGradient id={`cs-${p}`} cx="0.4" cy="0.2" r="0.9">
+            <stop offset="0" stopColor="#000000" stopOpacity="0.38" />
+            <stop offset="1" stopColor="#000000" stopOpacity="0" />
+          </radialGradient>
+          <filter id={`hl-${p}`} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="42" /></filter>
+          <clipPath id={`bc-${p}`}><path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" /></clipPath>
+        </defs>
+        <ellipse cx="500" cy="300" rx="460" ry="210" fill="#9D7FB0" opacity="0.10" filter={`url(#hl-${p})`} />
+        <path d="M 50 22 H 880 L 974 116 V 498 Q 974 530 942 530 H 50 Q 18 530 18 498 V 54 Q 18 22 50 22 Z" fill="#2A2138" fillOpacity="0.42" />
+        <path d="M 50 22 H 880 L 974 116 V 498 Q 974 530 942 530 H 50 Q 18 530 18 498 V 54 Q 18 22 50 22 Z" fill="none" stroke={`url(#ro-${p})`} strokeWidth="1.6" />
+        <path d="M 56 26 H 882 L 970 114 V 494 Q 970 524 940 524 H 56 Q 24 524 24 494 V 58 Q 24 26 56 26 Z" fill="none" stroke={`url(#rm-${p})`} strokeWidth="1.2" />
+        <path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" fill={`url(#bf-${p})`} />
+        <path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" fill={`url(#bg-${p})`} />
+        <g clipPath={`url(#bc-${p})`}>
+          <path d="M 30 30 H 964 V 300 H 30 Z" fill={`url(#sh-${p})`} opacity="0.9" />
+          <path d="M 884 110 L 884 30 L 964 110 Z" fill={`url(#cs-${p})`} transform="translate(-6 8)" />
+        </g>
+        <path d="M 60 30 H 884 L 964 110 V 490 Q 964 520 934 520 H 60 Q 30 520 30 490 V 60 Q 30 30 60 30 Z" fill="none" stroke={`url(#ri-${p})`} strokeWidth="1.2" />
+        <path d="M 76 46 H 878 L 948 116 V 480 Q 948 504 924 504 H 76 Q 46 504 46 480 V 76 Q 46 46 76 46 Z" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <path d="M 884 30 L 964 110 L 884 110 Z" fill={`url(#cf-${p})`} />
+        <path d="M 884 30 L 964 110" stroke={`url(#ce-${p})`} strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M 884 110 L 964 110" stroke="rgba(255,255,255,0.42)" strokeWidth="1" strokeLinecap="round" />
+        <path d="M 884 30 L 884 110" stroke="rgba(255,255,255,0.38)" strokeWidth="1" strokeLinecap="round" />
+        <path d="M 894 40 L 954 100 L 894 100 Z" fill="rgba(255,230,245,0.16)" />
+        <path d="M 892 38 L 956 102" stroke="rgba(255,255,255,0.82)" strokeWidth="1.2" strokeLinecap="round" opacity="0.82" />
+        <path d="M 70 24 H 878" stroke="rgba(255,255,255,0.55)" strokeWidth="1" strokeLinecap="round" opacity="0.55" />
+        <path d="M 70 528 H 932" stroke="rgba(255,255,255,0.22)" strokeWidth="0.8" strokeLinecap="round" opacity="0.45" />
+      </svg>
+
+      {/* Content */}
+      <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: "6% 14% 6% 6%" }}>
+
+        {/* Top: visibility badge + date */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999,
+            background: visColor.bg, border: `1px solid ${visColor.border}` }}>
+            <span style={{ fontSize: 8 }}>{visColor.icon}</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: visColor.text, letterSpacing: "0.04em" }}>{vis.toUpperCase()}</span>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="flex items-center text-xs font-medium rounded-xl"
-              style={{ padding: "5px 10px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.2)", color: "rgba(74,222,128,0.8)" }}>
-              Published
-            </span>
-            <motion.button
-              whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.08 }} transition={{ duration: 0.15, ease: "easeOut" }}
-              onClick={handleDelete}
-              className="flex items-center gap-1 rounded-xl text-xs font-medium border"
-              style={{ padding: "5px 10px", background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.25)", color: "rgba(239,68,68,0.6)" }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-              </svg>
-              <span>Delete</span>
-            </motion.button>
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{post.createdAt}</span>
+        </div>
+
+        {/* Center: title + summary */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "6px 0" }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", lineHeight: 1.3, marginBottom: 5,
+            overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" as const }}>
+            {post.title}
           </div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", lineHeight: 1.65,
+            overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+            {post.summary}
+          </div>
+        </div>
+
+        {/* Bottom: blob ID + delete */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontFamily: "monospace", fontSize: 8, color: "rgba(255,255,255,0.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%" }}>
+            {post.blobId.slice(0, 22)}…
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} transition={{ duration: 0.15, ease: "easeOut" }}
+            onClick={handleDelete}
+            onBlur={() => setConfirmDelete(false)}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+              background: confirmDelete ? "rgba(239,68,68,0.25)" : "rgba(239,68,68,0.1)",
+              border: `1px solid ${confirmDelete ? "rgba(239,68,68,0.55)" : "rgba(239,68,68,0.25)"}`,
+              color: confirmDelete ? "#f87171" : "rgba(239,68,68,0.55)",
+            }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+            </svg>
+            {confirmDelete ? "Confirm?" : "Delete"}
+          </motion.button>
         </div>
       </div>
     </motion.div>
@@ -211,7 +387,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen">
-      <Nav />
+      <Nav activePage="profile" />
 
       {/* Cover */}
       <div className="pt-20 relative overflow-hidden" style={{ height: 180, zIndex: 0 }}>
@@ -350,7 +526,7 @@ export default function ProfilePage() {
                   No saved files yet. Save posts from Content Discovery.
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                   <AnimatePresence>
                     {savedPosts.map(post => (
                       <SavedCard key={post.id} post={post} onUnsave={handleUnsave} />
@@ -368,7 +544,7 @@ export default function ProfilePage() {
                   No uploads yet. Upload your first .md file.
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                   <AnimatePresence>
                   {uploads.map(post => (
                     <UploadCard
