@@ -70,8 +70,9 @@ function ProfileAvatar({ address, size = 80 }: { address: string; size?: number 
     </svg>
   );
 }
-import { FEED_POSTS, getSavedIds, toggleSaved, getUploads, deleteUpload } from "@/lib/posts";
-import type { Post, UploadedPost } from "@/lib/posts";
+import { getSavedIds, toggleSaved } from "@/lib/posts";
+import type { Post } from "@/lib/posts";
+import type { DbPost } from "@/lib/supabase";
 
 /* ─── Glass Saved Card ──────────────────────────────────────────── */
 function SavedCard({ post, onUnsave }: { post: Post; onUnsave: (id: string) => void }) {
@@ -193,18 +194,38 @@ function SavedCard({ post, onUnsave }: { post: Post; onUnsave: (id: string) => v
 }
 
 /* ─── Glass Upload Card (my uploads) ───────────────────────────── */
-function UploadCard({ post, onDelete }: { post: UploadedPost; onDelete: () => void }) {
+function UploadCard({ post, onDelete }: { post: DbPost; onDelete: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { signMessage, account } = useWallet();
   const p = `uc-${post.id}`;
   const vis = post.visibility ?? "Public";
   const visColor = vis === "Public" ? { bg: "rgba(34,197,94,0.18)", border: "rgba(34,197,94,0.35)", text: "#4ade80", icon: "🌐" }
     : vis === "Unlisted" ? { bg: "rgba(251,191,36,0.15)", border: "rgba(251,191,36,0.3)", text: "#fbbf24", icon: "🔗" }
     : { bg: "rgba(239,68,68,0.15)", border: "rgba(239,68,68,0.3)", text: "#f87171", icon: "🔒" };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
-    deleteUpload(post.id);
-    onDelete();
+    try {
+      const signResult = await signMessage({
+        message: `AI Corpus Delete ${post.id}`,
+        nonce: Date.now().toString(),
+      });
+      if (!signResult) { setConfirmDelete(false); return; }
+      const rawSig = signResult.signature;
+      const sigHex = Array.isArray(rawSig) ? rawSig[0] : String(rawSig);
+      await fetch(`/api/posts/${post.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signature: sigHex,
+          publicKey: account?.publicKey?.toString() ?? "",
+          fullMessage: signResult.fullMessage,
+        }),
+      });
+      onDelete();
+    } catch {
+      setConfirmDelete(false);
+    }
   };
 
   return (
@@ -295,7 +316,7 @@ function UploadCard({ post, onDelete }: { post: UploadedPost; onDelete: () => vo
             <span style={{ fontSize: 8 }}>{visColor.icon}</span>
             <span style={{ fontSize: 9, fontWeight: 700, color: visColor.text, letterSpacing: "0.04em" }}>{vis.toUpperCase()}</span>
           </div>
-          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{post.createdAt}</span>
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
         </div>
 
         {/* Center: title + summary */}
@@ -313,7 +334,7 @@ function UploadCard({ post, onDelete }: { post: UploadedPost; onDelete: () => vo
         {/* Bottom: blob ID + delete */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
           <div style={{ fontFamily: "monospace", fontSize: 8, color: "rgba(255,255,255,0.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%" }}>
-            {post.blobId.slice(0, 22)}…
+            {post.blob_name.slice(0, 22)}…
           </div>
           <motion.button
             whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} transition={{ duration: 0.15, ease: "easeOut" }}
@@ -342,7 +363,13 @@ export default function ProfilePage() {
   const { connected, account, wallet } = useWallet();
   const [tab, setTab] = useState<"saved" | "uploads" | "apikey">("saved");
   const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [uploads, setUploads] = useState<UploadedPost[]>([]);
+  const [savedPosts, setSavedPosts] = useState<Post[]>([]);
+  const [uploads, setUploads] = useState<DbPost[]>([]);
+  const [apiKey, setApiKey] = useState<{ key: string; label: string; created_at: string; last_used_at: string | null } | null>(null);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [apiKeyGenerating, setApiKeyGenerating] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
   const [username, setUsername] = useState("");
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -350,19 +377,119 @@ export default function ProfilePage() {
   const [editingHandle, setEditingHandle] = useState(false);
   const [handleInput, setHandleInput] = useState("");
 
+  const SHAPES = ["hex","diamond","ring","pentagon","star","octagon","triangle","roundsq"];
+  const PALETTES: [string,string][] = [
+    ["#7C3AED","#4F46E5"],["#DB2777","#9333EA"],["#0EA5E9","#6366F1"],
+    ["#10B981","#3B82F6"],["#F59E0B","#EF4444"],["#8B5CF6","#EC4899"],
+    ["#06B6D4","#7C3AED"],["#F97316","#A855F7"],
+  ];
+  function dbToPost(p: DbPost): Post {
+    const n = parseInt(p.author_address.slice(2, 10) || "0", 16) || 0;
+    return {
+      id: p.id, title: p.title, summary: p.summary, tags: p.tags,
+      author: {
+        name: `${p.author_address.slice(0, 6)}...${p.author_address.slice(-4)}`,
+        handle: p.author_address.slice(2, 8),
+        color1: PALETTES[n % 8][0], color2: PALETTES[n % 8][1],
+        shape: SHAPES[n % 8], address: p.author_address,
+      },
+      reads: String(p.reads), likes: p.likes, tips: p.tips,
+      blobId: p.blob_name,
+      createdAt: new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      fileSize: p.file_size ?? "—", lines: p.lines,
+    };
+  }
+
+  const fetchUploads = async (address: string) => {
+    const res = await fetch(`/api/posts?author=${address}`);
+    const { posts } = await res.json() as { posts: DbPost[] };
+    setUploads(posts ?? []);
+  };
+
+  const fetchSaved = async (ids: string[]) => {
+    if (!ids.length) { setSavedPosts([]); return; }
+    const res = await fetch(`/api/posts?ids=${ids.join(",")}`);
+    const { posts } = await res.json() as { posts: DbPost[] };
+    setSavedPosts((posts ?? []).map(dbToPost));
+  };
+
   useEffect(() => {
-    setSavedIds(getSavedIds());
-    setUploads(getUploads());
+    const ids = getSavedIds();
+    setSavedIds(ids);
+    fetchSaved(ids);
     const savedName = localStorage.getItem("ai_corpus_username") ?? "";
     const savedHandle = localStorage.getItem("ai_corpus_handle") ?? "";
     setUsername(savedName);
     setUsernameInput(savedName);
     setHandle(savedHandle);
     setHandleInput(savedHandle);
-    localStorage.setItem("ai_corpus_avatar_shape", "star");
-    localStorage.setItem("ai_corpus_avatar_color1", "#F59E0B");
-    localStorage.setItem("ai_corpus_avatar_color2", "#EF4444");
   }, []);
+
+  useEffect(() => {
+    if (account?.address) fetchUploads(account.address.toString());
+  }, [account]);
+
+  const fetchApiKey = async (address: string) => {
+    setApiKeyLoading(true);
+    try {
+      const res = await fetch(`/api/apikeys?address=${address}`);
+      const { key } = await res.json();
+      setApiKey(key);
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const generateApiKey = async () => {
+    if (!account?.address || apiKeyGenerating) return;
+    setApiKeyGenerating(true);
+    try {
+      const newKey = "aicc_" + Array.from(crypto.getRandomValues(new Uint8Array(20)))
+        .map((b) => b.toString(16).padStart(2, "0")).join("");
+      const res = await fetch("/api/apikeys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: newKey,
+          ownerAddress: account.address.toString(),
+          label: "Default",
+        }),
+      });
+      const { key, error } = await res.json();
+      if (error) throw new Error(error);
+      setApiKey(key);
+      setApiKeyRevealed(true);
+    } catch {
+      // error
+    } finally {
+      setApiKeyGenerating(false);
+    }
+  };
+
+  const revokeApiKey = async () => {
+    if (!account?.address || apiKeyGenerating) return;
+    setApiKeyGenerating(true);
+    try {
+      await fetch("/api/apikeys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerAddress: account.address.toString() }),
+      });
+      setApiKey(null);
+      setApiKeyRevealed(false);
+    } catch {
+      // error
+    } finally {
+      setApiKeyGenerating(false);
+    }
+  };
+
+  const copyApiKey = () => {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey.key);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
+  };
 
   const saveUsername = () => {
     const trimmed = usernameInput.trim();
@@ -378,12 +505,22 @@ export default function ProfilePage() {
     setEditingHandle(false);
   };
 
-  const savedPosts = FEED_POSTS.filter(p => savedIds.includes(p.id));
-  const handleUnsave = (id: string) => setSavedIds(prev => prev.filter(x => x !== id));
+  const handleUnsave = (id: string) => {
+    const next = savedIds.filter(x => x !== id);
+    setSavedIds(next);
+    setSavedPosts(prev => prev.filter(p => p.id !== id));
+  };
 
   const address = account?.address?.toString() ?? "";
   const shortAddress = address ? truncateAddress(address) : "";
   const initials = shortAddress ? shortAddress.slice(2, 4).toUpperCase() : "?";
+
+  // Fetch API key when tab becomes active
+  useEffect(() => {
+    if (tab === "apikey" && address && !apiKey && !apiKeyLoading) {
+      fetchApiKey(address.toLowerCase());
+    }
+  }, [tab, address]);
 
   return (
     <div className="min-h-screen">
@@ -487,7 +624,7 @@ export default function ProfilePage() {
         <div className="flex items-center" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", marginBottom: 24 }}>
           {([
             { key: "saved",   label: `Saved Files${savedPosts.length > 0 ? ` (${savedPosts.length})` : ""}` },
-            { key: "uploads", label: `My Uploads${uploads.length > 0 ? ` (${uploads.length})` : ""}` },
+            { key: "uploads" as const, label: `My Uploads${uploads.length > 0 ? ` (${uploads.length})` : ""}` },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className="relative text-sm font-medium transition-colors"
@@ -550,7 +687,7 @@ export default function ProfilePage() {
                     <UploadCard
                       key={post.id}
                       post={post}
-                      onDelete={() => setUploads(getUploads())}
+                      onDelete={() => account?.address && fetchUploads(account.address.toString())}
                     />
                   ))}
                   </AnimatePresence>
@@ -561,39 +698,142 @@ export default function ProfilePage() {
 
           {tab === "apikey" && (
             <motion.div key="apikey" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="flex flex-col items-center justify-center" style={{ paddingTop: 64, paddingBottom: 64 }}>
-                {/* Icon */}
-                <div className="flex items-center justify-center rounded-2xl mb-6"
-                  style={{ width: 64, height: 64, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)" }}>
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-                  </svg>
+              <div style={{ paddingTop: 32, paddingBottom: 64, maxWidth: 560 }}>
+
+                {/* Header */}
+                <div style={{ marginBottom: 28 }}>
+                  <h3 style={{ fontWeight: 700, fontSize: 18, color: "#fff", marginBottom: 6 }}>API Key</h3>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.7 }}>
+                    Use this key to let Claude (or any AI) read your uploaded files via the corpus endpoint.
+                  </p>
                 </div>
 
-                {/* Badge */}
-                <div className="flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full"
-                  style={{ marginTop: 8, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.25)" }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", boxShadow: "0 0 6px rgba(167,139,250,0.8)", animation: "pulse 2s infinite" }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", color: "#a78bfa" }}>COMING SOON</span>
+                {/* Key card */}
+                <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "20px 24px", marginBottom: 20 }}>
+                  {apiKeyLoading ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,0.3)", fontSize: 13 }}>
+                      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                        style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid transparent", borderTopColor: "#a78bfa", borderRightColor: "#a78bfa" }} />
+                      Loading...
+                    </div>
+                  ) : apiKey ? (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)" }}>YOUR API KEY</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>
+                            Created {new Date(apiKey.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                          {apiKey.last_used_at && (
+                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>
+                              · Last used {new Date(apiKey.last_used_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Key display */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+                        <span style={{ flex: 1, fontFamily: "monospace", fontSize: 12, color: "#d8b4fe", letterSpacing: "0.05em", wordBreak: "break-all" }}>
+                          {apiKeyRevealed ? apiKey.key : `aicc_${"•".repeat(40)}`}
+                        </span>
+                        <button onClick={() => setApiKeyRevealed(v => !v)}
+                          style={{ flexShrink: 0, color: "rgba(255,255,255,0.3)", cursor: "pointer", background: "none", border: "none", padding: 4 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            {apiKeyRevealed
+                              ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                              : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+                            }
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <motion.button onClick={copyApiKey}
+                          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.12 }}
+                          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                            background: apiKeyCopied ? "rgba(34,197,94,0.15)" : "rgba(139,92,246,0.15)",
+                            border: `1px solid ${apiKeyCopied ? "rgba(34,197,94,0.35)" : "rgba(139,92,246,0.3)"}`,
+                            color: apiKeyCopied ? "#4ade80" : "#d8b4fe" }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                            {apiKeyCopied
+                              ? <path d="M20 6L9 17l-5-5"/>
+                              : <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>
+                            }
+                          </svg>
+                          {apiKeyCopied ? "Copied!" : "Copy Key"}
+                        </motion.button>
+                        <motion.button onClick={generateApiKey} disabled={apiKeyGenerating}
+                          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.12 }}
+                          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: apiKeyGenerating ? "not-allowed" : "pointer",
+                            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }}>
+                          {apiKeyGenerating
+                            ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }} style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid transparent", borderTopColor: "#a78bfa", borderRightColor: "#a78bfa" }} />
+                            : <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                          }
+                          Regenerate
+                        </motion.button>
+                        <motion.button onClick={revokeApiKey} disabled={apiKeyGenerating}
+                          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.12 }}
+                          style={{ width: 38, height: 38, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                            background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(239,68,68,0.5)" }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+                          </svg>
+                        </motion.button>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ textAlign: "center", padding: "12px 0" }}>
+                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginBottom: 16 }}>
+                        No API key yet. Generate one to enable corpus access.
+                      </div>
+                      <motion.button onClick={generateApiKey} disabled={apiKeyGenerating || !connected}
+                        whileHover={{ scale: 1.04, boxShadow: "0 0 24px rgba(139,92,246,0.4)" }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.14 }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 28px", borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: connected ? "pointer" : "not-allowed",
+                          background: connected ? "linear-gradient(135deg,#7C3AED,#EC4899)" : "rgba(255,255,255,0.06)",
+                          color: connected ? "#fff" : "rgba(255,255,255,0.25)", border: "none" }}>
+                        {apiKeyGenerating
+                          ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }} style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid transparent", borderTopColor: "#fff", borderRightColor: "#fff" }} />
+                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                        }
+                        {!connected ? "Connect wallet first" : apiKeyGenerating ? "Signing..." : "Generate API Key"}
+                      </motion.button>
+                    </div>
+                  )}
                 </div>
 
-                <h3 className="text-white font-bold text-xl" style={{ marginTop: 8 }}>API Key Management</h3>
+                {/* Usage examples */}
+                <div style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: "18px 20px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 14 }}>USAGE EXAMPLES</div>
 
-                <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.35)", maxWidth: 340, lineHeight: 1.8, marginTop: 12 }}>
-                  Generate and manage personal API keys so AI systems can access your uploaded files as knowledge sources.
-                </p>
-
-                {/* Mock key input */}
-                <div className="flex items-center gap-3 w-full" style={{ maxWidth: 400, marginTop: 32 }}>
-                  <div className="flex-1 flex items-center rounded-xl px-4"
-                    style={{ height: 44, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <span style={{ fontFamily: "monospace", fontSize: 13, color: "rgba(255,255,255,0.15)", letterSpacing: "0.15em" }}>
-                      sk_live_••••••••••••••••••••
-                    </span>
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>List your files:</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#a78bfa", background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 12px", wordBreak: "break-all" }}>
+                      GET /api/corpus?key={apiKey?.key ?? "<your-key>"}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-center rounded-xl text-xs font-semibold"
-                    style={{ height: 44, padding: "0 20px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.25)", color: "rgba(139,92,246,0.5)", whiteSpace: "nowrap" }}>
-                    Generate
+
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>Read specific file content:</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#a78bfa", background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 12px", wordBreak: "break-all" }}>
+                      GET /api/corpus?key={apiKey?.key ?? "<your-key>"}&id={"<postId>"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>Use with Claude API (tool definition):</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 10, color: "#94a3b8", background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "10px 12px", lineHeight: 1.7, whiteSpace: "pre" }}>{`{
+  "name": "read_corpus",
+  "description": "Read files from AI Corpus",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string" }
+    }
+  }
+}`}</div>
                   </div>
                 </div>
               </div>
