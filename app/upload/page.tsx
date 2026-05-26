@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/ui";
-import { saveUpload } from "@/lib/posts";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
 type Step = "empty" | "ready" | "scanning" | "scan_failed" | "awaiting_wallet" | "uploading" | "done";
@@ -306,9 +305,10 @@ function AwaitingWallet() {
 }
 
 /* ─── Upload Progress ───────────────────────────────────────────── */
-function UploadProgress({ onDone }: { onDone: () => void }) {
+function UploadProgress() {
   const [pct, setPct] = useState(0);
   const [phase, setPhase] = useState("Connecting to Shelby network...");
+  const [finalizing, setFinalizing] = useState(false);
 
   useEffect(() => {
     const phases: [number, string][] = [
@@ -316,13 +316,13 @@ function UploadProgress({ onDone }: { onDone: () => void }) {
       [45,  "Generating Merkle root..."],
       [68,  "Submitting to Shelbynet..."],
       [88,  "Waiting for confirmation..."],
-      [100, "Blob stored successfully!"],
+      [96,  "Finalizing on chain..."],
     ];
     let i = 0;
     let cancelled = false;
     const tick = () => {
       if (cancelled) return;
-      if (i >= phases.length) { setTimeout(() => { if (!cancelled) onDone(); }, 700); return; }
+      if (i >= phases.length) { setFinalizing(true); return; }
       setPct(phases[i][0]); setPhase(phases[i][1]); i++;
       setTimeout(tick, 900 + Math.random() * 300);
     };
@@ -336,8 +336,14 @@ function UploadProgress({ onDone }: { onDone: () => void }) {
         <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 blur-md opacity-50 animate-pulse" />
         <svg className="absolute inset-0 -rotate-90" viewBox="0 0 56 56">
           <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-          <circle cx="28" cy="28" r="24" fill="none" stroke="url(#pg)" strokeWidth="2"
-            strokeDasharray={`${2 * Math.PI * 24 * pct / 100} ${2 * Math.PI * 24}`} strokeLinecap="round" />
+          {finalizing ? (
+            <motion.circle cx="28" cy="28" r="24" fill="none" stroke="url(#pg)" strokeWidth="2"
+              strokeDasharray={`${2 * Math.PI * 24 * 0.96} ${2 * Math.PI * 24}`} strokeLinecap="round"
+              animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.4 }} />
+          ) : (
+            <circle cx="28" cy="28" r="24" fill="none" stroke="url(#pg)" strokeWidth="2"
+              strokeDasharray={`${2 * Math.PI * 24 * pct / 100} ${2 * Math.PI * 24}`} strokeLinecap="round" />
+          )}
           <defs>
             <linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#8b5cf6" /><stop offset="100%" stopColor="#d946ef" />
@@ -345,20 +351,39 @@ function UploadProgress({ onDone }: { onDone: () => void }) {
           </defs>
         </svg>
         <div className="absolute inset-2 rounded-full flex items-center justify-center">
-          <span className="text-xs font-bold text-white/70">{pct}%</span>
+          {finalizing ? (
+            <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+              style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid transparent", borderTopColor: "#d946ef", borderRightColor: "#8b5cf6" }} />
+          ) : (
+            <span className="text-xs font-bold text-white/70">{pct}%</span>
+          )}
         </div>
       </div>
-      <div className="text-sm font-medium text-white/80 mb-1">{phase}</div>
+      <div className="text-sm font-medium text-white/80 mb-1">
+        {finalizing ? "Storing on Shelby blockchain..." : phase}
+      </div>
+      {finalizing && (
+        <div className="text-xs text-white/30 mb-1">This may take a moment</div>
+      )}
       <div className="w-48 h-0.5 bg-white/10 rounded-full overflow-hidden mt-3">
-        <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.5, ease: "easeOut" }}
-          className="h-full rounded-full" style={{ background: "linear-gradient(90deg,#8b5cf6,#d946ef)" }} />
+        {finalizing ? (
+          <motion.div animate={{ x: ["-100%", "100%"] }} transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+            className="h-full w-1/2 rounded-full" style={{ background: "linear-gradient(90deg,#8b5cf6,#d946ef)" }} />
+        ) : (
+          <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.5, ease: "easeOut" }}
+            className="h-full rounded-full" style={{ background: "linear-gradient(90deg,#8b5cf6,#d946ef)" }} />
+        )}
       </div>
     </div>
   );
 }
 
 /* ─── Success Screen ─────────────────────────────────────────────── */
-function SuccessScreen({ blobId, txHash }: { blobId: string; txHash: string }) {
+function SuccessScreen({ blobId, txHash, accountAddress }: { blobId: string; txHash: string; accountAddress: string }) {
+  const shelbyBlobUrl = accountAddress && blobId
+    ? `https://explorer.shelby.xyz/shelbynet/blobs/${accountAddress}?blobName=${blobId}`
+    : "https://explorer.shelby.xyz/shelbynet";
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       className="absolute inset-0 flex flex-col items-center justify-center gap-3"
@@ -374,30 +399,36 @@ function SuccessScreen({ blobId, txHash }: { blobId: string; txHash: string }) {
       </div>
 
       {txHash && (
-        <div className="w-full rounded-xl text-left" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", padding: "10px 16px" }}>
-          <div className="text-[9px] text-white/30 mb-0.5">TX HASH · 0.001 APT STORAGE FEE PAID</div>
+        <a
+          href={`https://explorer.shelby.xyz/shelbynet/txn/${txHash}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full rounded-xl text-left block"
+          style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", padding: "10px 16px" }}
+        >
+          <div className="text-[9px] text-white/30 mb-0.5">TX HASH · 0.001 APT STORAGE FEE · SHELBY NETWORK · CLICK TO VIEW ↗</div>
           <div className="font-mono text-xs text-green-400/80 break-all">{txHash}</div>
-        </div>
+        </a>
       )}
 
       <div className="w-full rounded-xl text-left" style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)", padding: "10px 16px" }}>
-        <div className="text-[9px] text-white/30 mb-0.5">BLOB ID</div>
-        <div className="font-mono text-xs text-purple-300 break-all">{blobId}</div>
+        <div className="text-[9px] text-white/30 mb-0.5">SHELBY BLOB ID</div>
+        <div className="font-mono text-xs text-purple-300 break-all">{blobId || "—"}</div>
       </div>
 
       <div className="flex gap-3 w-full">
-        <Link href={`/content-discovery?post=${blobId}`} className="flex-1">
+        <Link href="/content-discovery" className="flex-1">
           <motion.button whileHover={{ scale: 1.04, boxShadow: "0 0 28px rgba(139,92,246,0.55)" }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.15, ease: "easeOut" }}
             className="w-full rounded-xl font-semibold text-white"
             style={{ background: "linear-gradient(135deg,#7C3AED,#EC4899)", padding: "14px 20px", fontSize: "13px" }}>
             View in Feed
           </motion.button>
         </Link>
-        <a href={`https://explorer.aptoslabs.com/txn/${txHash}?network=testnet`} target="_blank" rel="noopener noreferrer" className="flex-1">
+        <a href={shelbyBlobUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
           <motion.button whileHover={{ scale: 1.04, boxShadow: "0 0 28px rgba(139,92,246,0.55)" }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.15, ease: "easeOut" }}
             className="w-full rounded-xl font-semibold text-white"
             style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", padding: "14px 20px", fontSize: "13px" }}>
-            Aptos Explorer ↗
+            Shelby Explorer ↗
           </motion.button>
         </a>
       </div>
@@ -407,7 +438,7 @@ function SuccessScreen({ blobId, txHash }: { blobId: string; txHash: string }) {
 
 /* ─── Page ──────────────────────────────────────────────────────── */
 export default function UploadPage() {
-  const { signAndSubmitTransaction, connected } = useWallet();
+  const { signAndSubmitTransaction, connected, account } = useWallet();
   const [step, setStep] = useState<Step>("empty");
   const [fileName, setFileName] = useState("");
   const [title, setTitle] = useState("");
@@ -421,7 +452,8 @@ export default function UploadPage() {
   const [scanFailDetail, setScanFailDetail] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [blobId] = useState(() => `blob-0x${Date.now().toString(16)}${Math.random().toString(16).slice(2, 10)}`);
+  const [blobId, setBlobId] = useState("");
+  const [shelbyAccountAddress, setShelbyAccountAddress] = useState("");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -457,10 +489,29 @@ export default function UploadPage() {
           functionArguments: [PROTOCOL_ADDRESS, STORAGE_FEE_OCTAS],
         },
       });
-      setTxHash((response as any).hash ?? "");
+      const hash = (response as any).hash ?? "";
+      setTxHash(hash);
+
+      const form = new FormData();
+      form.append("file", uploadFile!);
+      form.append("title", title);
+      form.append("summary", summary);
+      form.append("authorAddress", account?.address?.toString() ?? "");
+      form.append("duration", duration);
+      form.append("visibility", visibility);
+
+      // Show progress animation while upload runs
       setStep("uploading");
-    } catch (err: any) {
-      setTxError(err?.message ?? "Transaction rejected.");
+
+      const result = await fetch("/api/upload", { method: "POST", body: form }).then((r) => r.json());
+
+      if (result?.error) throw new Error(result.error);
+      if (result?.post?.blob_name) setBlobId(result.post.blob_name);
+      if (result?.post?.account_address) setShelbyAccountAddress(result.post.account_address);
+
+      setStep("done");
+    } catch (err: unknown) {
+      setTxError(err instanceof Error ? err.message : "Transaction rejected.");
       setStep("ready");
     }
   };
@@ -471,20 +522,6 @@ export default function UploadPage() {
     setStep("scan_failed");
   };
 
-  const handleUploadDone = () => {
-    saveUpload({
-      id: blobId,
-      title,
-      summary,
-      fileName,
-      fileSize: "—",
-      blobId,
-      createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      tags: [],
-      visibility: visibility as "Public" | "Unlisted" | "Private",
-    });
-    setStep("done");
-  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
@@ -700,14 +737,14 @@ export default function UploadPage() {
           {/* Uploading */}
           {step === "uploading" && (
             <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <UploadProgress onDone={handleUploadDone} />
+              <UploadProgress />
             </motion.div>
           )}
 
           {/* Done */}
           {step === "done" && (
             <motion.div key="done" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <SuccessScreen blobId={blobId} txHash={txHash} />
+              <SuccessScreen blobId={blobId} txHash={txHash} accountAddress={shelbyAccountAddress} />
             </motion.div>
           )}
 

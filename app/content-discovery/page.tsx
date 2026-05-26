@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRef, useState, useEffect } from "react";
 import { Nav } from "@/components/ui";
-import { FEED_POSTS, toggleSaved, getSavedIds, toggleLiked, getLikedIds, getUploads, deleteUpload } from "@/lib/posts";
+import { toggleSaved, getSavedIds, toggleLiked, getLikedIds } from "@/lib/posts";
 import type { Post } from "@/lib/posts";
+import type { DbPost } from "@/lib/supabase";
 import { TipModal } from "@/components/TipModal";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
@@ -98,11 +99,34 @@ function ActionButtons({ post, isOwned, onDelete }: { post: Post; isOwned: boole
   const [liked, setLiked] = useState(() => getLikedIds().includes(post.id));
   const [saved, setSaved] = useState(() => getSavedIds().includes(post.id));
   const [tipOpen, setTipOpen] = useState(false);
+  const { signMessage, account } = useWallet();
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 
   const handleSave = () => { toggleSaved(post.id); setSaved(s => !s); };
   const handleLike = () => { toggleLiked(post.id); setLiked(l => !l); };
-  const handleDelete = () => { deleteUpload(post.id); onDelete?.(); };
+  const handleDelete = async () => {
+    try {
+      const signResult = await signMessage({
+        message: `AI Corpus Delete ${post.id}`,
+        nonce: Date.now().toString(),
+      });
+      if (!signResult) return;
+      const rawSig = signResult.signature;
+      const sigHex = Array.isArray(rawSig) ? rawSig[0] : String(rawSig);
+      await fetch(`/api/posts/${post.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signature: sigHex,
+          publicKey: account?.publicKey?.toString() ?? "",
+          fullMessage: signResult.fullMessage,
+        }),
+      });
+      onDelete?.();
+    } catch {
+      // User cancelled signing or error — do nothing
+    }
+  };
 
   return (
     <>
@@ -288,86 +312,58 @@ function GlassFileCard({ post, isOwned, onDelete }: { post: Post; isOwned: boole
   );
 }
 
+function dbToPost(p: DbPost): Post {
+  const derived = deriveAvatar(p.author_address);
+  return {
+    id: p.id,
+    title: p.title,
+    summary: p.summary,
+    tags: p.tags,
+    author: {
+      name: `${p.author_address.slice(0, 6)}...${p.author_address.slice(-4)}`,
+      handle: p.author_address.slice(2, 8),
+      color1: derived.colors[0],
+      color2: derived.colors[1],
+      shape: derived.shape,
+      address: p.author_address,
+    },
+    reads: p.reads >= 1000 ? `${(p.reads / 1000).toFixed(1)}K` : String(p.reads),
+    likes: p.likes,
+    tips: p.tips,
+    blobId: p.blob_name,
+    createdAt: new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    fileSize: p.file_size ?? "—",
+    lines: p.lines,
+  };
+}
+
 /* ─── Page ──────────────────────────────────────────────────────── */
 export default function DiscoveryPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const { account } = useWallet();
-  const [allPosts, setAllPosts] = useState<Post[]>(() => {
-    if (typeof window === "undefined") return FEED_POSTS;
-    const uploads = getUploads();
-    const initUsername = localStorage.getItem("ai_corpus_username") ?? "";
-    const initHandle   = localStorage.getItem("ai_corpus_handle")  ?? "me";
-    const initShape    = localStorage.getItem("ai_corpus_avatar_shape")  || "hex";
-    const initColor1   = localStorage.getItem("ai_corpus_avatar_color1") || "#7C3AED";
-    const initColor2   = localStorage.getItem("ai_corpus_avatar_color2") || "#EC4899";
-    const uploadedPosts: Post[] = uploads.map(u => ({
-      id: u.id, title: u.title, summary: u.summary, tags: u.tags,
-      author: { name: initUsername || "You", handle: initHandle, color1: initColor1, color2: initColor2, shape: initShape, address: "0x0" },
-      reads: "0", likes: 0, tips: 0,
-      blobId: u.blobId, createdAt: u.createdAt, fileSize: u.fileSize, lines: 0,
-    }));
-    return [...uploadedPosts, ...FEED_POSTS];
-  });
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
   const [targetPostId, setTargetPostId] = useState<string | null>(null);
 
+  const fetchPosts = async () => {
+    try {
+      const res = await fetch("/api/posts");
+      const { posts } = await res.json() as { posts: DbPost[] };
+      setAllPosts((posts ?? []).map(dbToPost));
+    } catch {
+      setAllPosts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    fetchPosts();
     const params = new URLSearchParams(window.location.search);
     const postId = params.get("post");
     if (postId) setTargetPostId(postId);
   }, []);
-
-  const [ownedIds, setOwnedIds] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set<string>();
-    return new Set(getUploads().map(u => u.id));
-  });
-
-  const buildPosts = (address: string) => {
-    const username = (typeof window !== "undefined" ? localStorage.getItem("ai_corpus_username") : null) ?? "";
-    const savedHandle = (typeof window !== "undefined" ? localStorage.getItem("ai_corpus_handle") : null) ?? "";
-    const derived = deriveAvatar(address || "0x000000");
-    const shape  = localStorage.getItem("ai_corpus_avatar_shape")  || derived.shape;
-    const color1 = localStorage.getItem("ai_corpus_avatar_color1") || derived.colors[0];
-    const color2 = localStorage.getItem("ai_corpus_avatar_color2") || derived.colors[1];
-    const colors: [string, string] = [color1, color2];
-    const uploads = getUploads();
-    setOwnedIds(new Set(uploads.map(u => u.id)));
-    const uploadedPosts: Post[] = uploads.map(u => ({
-      id: u.id,
-      title: u.title,
-      summary: u.summary,
-      tags: u.tags,
-      author: {
-        name: username || "You",
-        handle: savedHandle || (address ? address.slice(2, 8) : "me"),
-        color1: colors[0],
-        color2: colors[1],
-        shape,
-        address: address || "0x0",
-      },
-      reads: "0",
-      likes: 0,
-      tips: 0,
-      blobId: u.blobId,
-      createdAt: u.createdAt,
-      fileSize: u.fileSize,
-      lines: 0,
-    }));
-    setAllPosts([...uploadedPosts, ...FEED_POSTS]);
-  };
-
-  // Mount'ta her zaman localStorage'dan oku (wallet bağlı olsun ya da olmasın)
-  useEffect(() => {
-    buildPosts(account?.address?.toString() ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Wallet bağlandığında / kesildiğinde de güncelle
-  useEffect(() => {
-    if (account !== undefined) {
-      buildPosts(account?.address?.toString() ?? "");
-    }
-  }, [account]);
 
   useEffect(() => {
     if (!targetPostId || !containerRef.current || allPosts.length === 0) return;
@@ -386,6 +382,32 @@ export default function DiscoveryPage() {
     setCurrentIndex(Math.round(scrollTop / clientHeight));
   };
 
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <Nav activePage="content discovery" />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+            style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid transparent",
+              borderTopColor: "#a78bfa", borderRightColor: "#a78bfa" }} />
+          <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Loading from Shelby...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (allPosts.length === 0) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <Nav activePage="content discovery" />
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
+          <div style={{ fontSize: 15, marginBottom: 8 }}>No posts yet</div>
+          <div style={{ fontSize: 12 }}>Be the first to upload a file to Shelby</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Nav activePage="content discovery" />
@@ -398,7 +420,7 @@ export default function DiscoveryPage() {
         className="h-screen overflow-y-scroll"
         style={{ scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
       >
-        {allPosts.map((post, i) => (
+        {allPosts.map((post) => (
           <motion.div
             key={post.id}
             initial={{ opacity: 0, y: 30 }}
@@ -410,14 +432,13 @@ export default function DiscoveryPage() {
           >
             <GlassFileCard
               post={post}
-              isOwned={ownedIds.has(post.id)}
-              onDelete={() => buildPosts(account?.address?.toString() ?? "")}
+              isOwned={post.author.address === account?.address?.toString()}
+              onDelete={fetchPosts}
             />
           </motion.div>
         ))}
       </div>
 
-      {/* Scroll indicator */}
       <div className="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 z-40 pointer-events-none">
         {allPosts.map((_: Post, i: number) => (
           <div key={i} className="w-0.5 h-4 rounded-full bg-white/15" />
