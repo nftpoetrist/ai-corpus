@@ -99,32 +99,29 @@ function ActionButtons({ post, isOwned, onDelete }: { post: Post; isOwned: boole
   const [liked, setLiked] = useState(() => getLikedIds().includes(post.id));
   const [saved, setSaved] = useState(() => getSavedIds().includes(post.id));
   const [tipOpen, setTipOpen] = useState(false);
-  const { signMessage, account } = useWallet();
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 
-  const handleSave = () => { toggleSaved(post.id); setSaved(s => !s); };
+  const handleSave = () => {
+    const nextSaved = !saved;
+    toggleSaved(post.id);
+    setSaved(nextSaved);
+    if (nextSaved) {
+      fetch("/api/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: post.id }),
+      }).catch(() => {});
+    } else {
+      fetch(`/api/saved?id=${post.id}`, { method: "DELETE" }).catch(() => {});
+    }
+  };
   const handleLike = () => { toggleLiked(post.id); setLiked(l => !l); };
   const handleDelete = async () => {
     try {
-      const signResult = await signMessage({
-        message: `AI Corpus Delete ${post.id}`,
-        nonce: Date.now().toString(),
-      });
-      if (!signResult) return;
-      const rawSig = signResult.signature;
-      const sigHex = Array.isArray(rawSig) ? rawSig[0] : String(rawSig);
-      await fetch(`/api/posts/${post.id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          signature: sigHex,
-          publicKey: account?.publicKey?.toString() ?? "",
-          fullMessage: signResult.fullMessage,
-        }),
-      });
-      onDelete?.();
+      const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      if (res.ok) onDelete?.();
     } catch {
-      // User cancelled signing or error — do nothing
+      // error
     }
   };
 

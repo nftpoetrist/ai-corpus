@@ -178,7 +178,11 @@ function SavedCard({ post, onUnsave }: { post: Post; onUnsave: (id: string) => v
           </div>
           <motion.button
             whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} transition={{ duration: 0.15, ease: "easeOut" }}
-            onClick={() => { toggleSaved(post.id); onUnsave(post.id); }}
+            onClick={() => {
+              toggleSaved(post.id);
+              fetch(`/api/saved?id=${post.id}`, { method: "DELETE" }).catch(() => {});
+              onUnsave(post.id);
+            }}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8,
               fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
               background: "rgba(139,92,246,0.18)", border: "1px solid rgba(139,92,246,0.38)", color: "#c4b5fd" }}>
@@ -196,7 +200,6 @@ function SavedCard({ post, onUnsave }: { post: Post; onUnsave: (id: string) => v
 /* ─── Glass Upload Card (my uploads) ───────────────────────────── */
 function UploadCard({ post, onDelete }: { post: DbPost; onDelete: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const { signMessage, account } = useWallet();
   const p = `uc-${post.id}`;
   const vis = post.visibility ?? "Public";
   const visColor = vis === "Public" ? { bg: "rgba(34,197,94,0.18)", border: "rgba(34,197,94,0.35)", text: "#4ade80", icon: "🌐" }
@@ -206,23 +209,9 @@ function UploadCard({ post, onDelete }: { post: DbPost; onDelete: () => void }) 
   const handleDelete = async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     try {
-      const signResult = await signMessage({
-        message: `AI Corpus Delete ${post.id}`,
-        nonce: Date.now().toString(),
-      });
-      if (!signResult) { setConfirmDelete(false); return; }
-      const rawSig = signResult.signature;
-      const sigHex = Array.isArray(rawSig) ? rawSig[0] : String(rawSig);
-      await fetch(`/api/posts/${post.id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          signature: sigHex,
-          publicKey: account?.publicKey?.toString() ?? "",
-          fullMessage: signResult.fullMessage,
-        }),
-      });
-      onDelete();
+      const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      if (res.ok) onDelete();
+      else setConfirmDelete(false);
     } catch {
       setConfirmDelete(false);
     }
@@ -360,16 +349,20 @@ function UploadCard({ post, onDelete }: { post: DbPost; onDelete: () => void }) 
 
 /* ─── Page ──────────────────────────────────────────────────────── */
 export default function ProfilePage() {
-  const { connected, account, wallet } = useWallet();
+  const { connected, account, wallet, signMessage } = useWallet();
   const [tab, setTab] = useState<"saved" | "uploads" | "apikey">("saved");
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [savedPosts, setSavedPosts] = useState<Post[]>([]);
   const [uploads, setUploads] = useState<DbPost[]>([]);
-  const [apiKey, setApiKey] = useState<{ key: string; label: string; created_at: string; last_used_at: string | null } | null>(null);
+  const [apiKey, setApiKey] = useState<{ key?: string; label: string; created_at: string; last_used_at: string | null } | null>(null);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [apiKeyGenerating, setApiKeyGenerating] = useState(false);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true); // true until first checkSession resolves
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [username, setUsername] = useState("");
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -426,17 +419,80 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (account?.address) fetchUploads(account.address.toString());
+    if (account?.address) {
+      fetchUploads(account.address.toString());
+      checkSession();
+    } else {
+      setIsAuthenticated(false);
+      setAuthChecking(false);
+      fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    }
   }, [account]);
 
-  const fetchApiKey = async (address: string) => {
+  const fetchApiKey = async () => {
     setApiKeyLoading(true);
     try {
-      const res = await fetch(`/api/apikeys?address=${address}`);
+      const res = await fetch("/api/apikeys");
       const { key } = await res.json();
       setApiKey(key);
     } finally {
       setApiKeyLoading(false);
+    }
+  };
+
+  const checkSession = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      setIsAuthenticated(res.ok);
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
+  const authenticate = async () => {
+    if (!account?.address || !signMessage || authLoading) return;
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const address = account.address.toString().toLowerCase();
+
+      // Step 1: Get challenge nonce from server
+      const challengeRes = await fetch("/api/auth/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
+      const { nonce, error: challengeErr } = await challengeRes.json();
+      if (challengeErr || !nonce) throw new Error(challengeErr ?? "Failed to get challenge");
+
+      // Step 2: Sign the nonce with wallet
+      const signResult = await signMessage({ message: nonce, nonce: "1" });
+      if (!signResult) throw new Error("Signing cancelled");
+
+      // Step 3: Send signature to server for verification
+      const rawSig = signResult.signature;
+      const sigHex = Array.isArray(rawSig)
+        ? (typeof rawSig[0] === "string" ? rawSig[0] : String(rawSig[0]))
+        : String(rawSig);
+
+      const verifyRes = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address,
+          nonce,
+          signature: sigHex,
+          publicKey: account.publicKey?.toString() ?? "",
+        }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok) throw new Error(verifyData.error ?? "Authentication failed");
+
+      setIsAuthenticated(true);
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "Authentication failed");
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -449,15 +505,12 @@ export default function ProfilePage() {
       const res = await fetch("/api/apikeys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          key: newKey,
-          ownerAddress: account.address.toString(),
-          label: "Default",
-        }),
+        body: JSON.stringify({ key: newKey, label: "Default" }),
       });
       const { key, error } = await res.json();
       if (error) throw new Error(error);
-      setApiKey(key);
+      // DB stores hash — preserve plaintext in state so user can copy it
+      setApiKey({ ...key, key: newKey });
       setApiKeyRevealed(true);
     } catch {
       // error
@@ -470,11 +523,7 @@ export default function ProfilePage() {
     if (!account?.address || apiKeyGenerating) return;
     setApiKeyGenerating(true);
     try {
-      await fetch("/api/apikeys", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerAddress: account.address.toString() }),
-      });
+      await fetch("/api/apikeys", { method: "DELETE" });
       setApiKey(null);
       setApiKeyRevealed(false);
     } catch {
@@ -485,7 +534,7 @@ export default function ProfilePage() {
   };
 
   const copyApiKey = () => {
-    if (!apiKey) return;
+    if (!apiKey?.key) return;
     navigator.clipboard.writeText(apiKey.key);
     setApiKeyCopied(true);
     setTimeout(() => setApiKeyCopied(false), 2000);
@@ -515,12 +564,12 @@ export default function ProfilePage() {
   const shortAddress = address ? truncateAddress(address) : "";
   const initials = shortAddress ? shortAddress.slice(2, 4).toUpperCase() : "?";
 
-  // Fetch API key when tab becomes active
+  // Fetch API key metadata when tab is active and user is authenticated
   useEffect(() => {
-    if (tab === "apikey" && address && !apiKey && !apiKeyLoading) {
-      fetchApiKey(address.toLowerCase());
+    if (tab === "apikey" && isAuthenticated && !apiKey && !apiKeyLoading) {
+      fetchApiKey();
     }
-  }, [tab, address]);
+  }, [tab, isAuthenticated]);
 
   return (
     <div className="min-h-screen">
@@ -708,8 +757,36 @@ export default function ProfilePage() {
                   </p>
                 </div>
 
+                {/* Auth wall */}
+                {!authChecking && !isAuthenticated && (
+                  <div style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 16, padding: "24px", marginBottom: 20, textAlign: "center" }}>
+                    <div style={{ fontSize: 32, marginBottom: 12 }}>🔐</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 6 }}>Wallet Authentication Required</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 20, lineHeight: 1.6 }}>
+                      Sign a one-time message with your wallet to prove ownership.<br />You won{"'"}t be asked again for 24 hours.
+                    </div>
+                    {authError && (
+                      <div style={{ fontSize: 12, color: "#f87171", marginBottom: 12, padding: "8px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 8, border: "1px solid rgba(239,68,68,0.2)" }}>
+                        {authError}
+                      </div>
+                    )}
+                    <motion.button onClick={authenticate} disabled={authLoading || !connected}
+                      whileHover={{ scale: 1.04, boxShadow: "0 0 24px rgba(139,92,246,0.45)" }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.14 }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 32px", borderRadius: 12, fontSize: 13, fontWeight: 600,
+                        cursor: connected && !authLoading ? "pointer" : "not-allowed",
+                        background: connected ? "linear-gradient(135deg,#7C3AED,#EC4899)" : "rgba(255,255,255,0.06)",
+                        color: connected ? "#fff" : "rgba(255,255,255,0.25)", border: "none" }}>
+                      {authLoading
+                        ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }} style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid transparent", borderTopColor: "#fff", borderRightColor: "#fff" }} />
+                        : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      }
+                      {!connected ? "Connect wallet first" : authLoading ? "Waiting for signature..." : "Authenticate Wallet"}
+                    </motion.button>
+                  </div>
+                )}
+
                 {/* Key card */}
-                <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "20px 24px", marginBottom: 20 }}>
+                <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "20px 24px", marginBottom: 20, opacity: isAuthenticated || authChecking ? 1 : 0.35, pointerEvents: isAuthenticated ? "auto" : "none" }}>
                   {apiKeyLoading ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,0.3)", fontSize: 13 }}>
                       <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
@@ -734,28 +811,32 @@ export default function ProfilePage() {
 
                       {/* Key display */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
-                        <span style={{ flex: 1, fontFamily: "monospace", fontSize: 12, color: "#d8b4fe", letterSpacing: "0.05em", wordBreak: "break-all" }}>
-                          {apiKeyRevealed ? apiKey.key : `aicc_${"•".repeat(40)}`}
+                        <span style={{ flex: 1, fontFamily: "monospace", fontSize: 12, color: apiKey.key ? "#d8b4fe" : "rgba(255,255,255,0.25)", letterSpacing: "0.05em", wordBreak: "break-all" }}>
+                          {apiKey.key
+                            ? (apiKeyRevealed ? apiKey.key : `aicc_${"•".repeat(40)}`)
+                            : `aicc_${"•".repeat(40)} — regenerate to copy`}
                         </span>
-                        <button onClick={() => setApiKeyRevealed(v => !v)}
-                          style={{ flexShrink: 0, color: "rgba(255,255,255,0.3)", cursor: "pointer", background: "none", border: "none", padding: 4 }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                            {apiKeyRevealed
-                              ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
-                              : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
-                            }
-                          </svg>
-                        </button>
+                        {apiKey.key && (
+                          <button onClick={() => setApiKeyRevealed(v => !v)}
+                            style={{ flexShrink: 0, color: "rgba(255,255,255,0.3)", cursor: "pointer", background: "none", border: "none", padding: 4 }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                              {apiKeyRevealed
+                                ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                                : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+                              }
+                            </svg>
+                          </button>
+                        )}
                       </div>
 
                       {/* Actions */}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <motion.button onClick={copyApiKey}
-                          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ duration: 0.12 }}
-                          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                            background: apiKeyCopied ? "rgba(34,197,94,0.15)" : "rgba(139,92,246,0.15)",
-                            border: `1px solid ${apiKeyCopied ? "rgba(34,197,94,0.35)" : "rgba(139,92,246,0.3)"}`,
-                            color: apiKeyCopied ? "#4ade80" : "#d8b4fe" }}>
+                        <motion.button onClick={copyApiKey} disabled={!apiKey?.key}
+                          whileHover={{ scale: apiKey?.key ? 1.03 : 1 }} whileTap={{ scale: apiKey?.key ? 0.97 : 1 }} transition={{ duration: 0.12 }}
+                          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: apiKey?.key ? "pointer" : "not-allowed",
+                            background: apiKeyCopied ? "rgba(34,197,94,0.15)" : apiKey?.key ? "rgba(139,92,246,0.15)" : "rgba(255,255,255,0.04)",
+                            border: `1px solid ${apiKeyCopied ? "rgba(34,197,94,0.35)" : apiKey?.key ? "rgba(139,92,246,0.3)" : "rgba(255,255,255,0.08)"}`,
+                            color: apiKeyCopied ? "#4ade80" : apiKey?.key ? "#d8b4fe" : "rgba(255,255,255,0.2)" }}>
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                             {apiKeyCopied
                               ? <path d="M20 6L9 17l-5-5"/>
@@ -810,15 +891,17 @@ export default function ProfilePage() {
 
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>List your files:</div>
-                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#a78bfa", background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 12px", wordBreak: "break-all" }}>
-                      GET /api/corpus?key={apiKey?.key ?? "<your-key>"}
+                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#a78bfa", background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 12px", wordBreak: "break-all", lineHeight: 1.8 }}>
+                      GET /api/corpus<br />
+                      Authorization: Bearer {apiKey?.key ?? "<your-key>"}
                     </div>
                   </div>
 
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>Read specific file content:</div>
-                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#a78bfa", background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 12px", wordBreak: "break-all" }}>
-                      GET /api/corpus?key={apiKey?.key ?? "<your-key>"}&id={"<postId>"}
+                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#a78bfa", background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 12px", wordBreak: "break-all", lineHeight: 1.8 }}>
+                      GET /api/corpus?id={"<postId>"}<br />
+                      Authorization: Bearer {apiKey?.key ?? "<your-key>"}
                     </div>
                   </div>
 

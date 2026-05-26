@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { downloadFromShelby } from "@/lib/shelby";
-import { verifyAptosSignature, deriveAddressFromPublicKey } from "@/lib/security";
+import { getSessionAddress } from "@/lib/auth";
 
 export async function DELETE(
   req: NextRequest,
@@ -9,16 +9,10 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  let body: { signature?: string; publicKey?: string; fullMessage?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  }
-
-  const { signature, publicKey, fullMessage } = body;
-  if (!signature || !publicKey || !fullMessage) {
-    return NextResponse.json({ error: "Wallet signature required" }, { status: 401 });
+  // Require valid session
+  const sessionAddress = await getSessionAddress(req);
+  if (!sessionAddress) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
   // Fetch post to verify ownership
@@ -32,14 +26,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  // Verify signature
-  if (!verifyAptosSignature(fullMessage, signature, publicKey)) {
-    return NextResponse.json({ error: "Invalid wallet signature" }, { status: 401 });
-  }
-
-  // Verify signer is the author
-  const derivedAddress = deriveAddressFromPublicKey(publicKey);
-  if (!derivedAddress || derivedAddress.toLowerCase() !== post.author_address.toLowerCase()) {
+  // Session address must match author
+  if (sessionAddress.toLowerCase() !== post.author_address.toLowerCase()) {
     return NextResponse.json({ error: "Unauthorized: you are not the author" }, { status: 403 });
   }
 
@@ -59,7 +47,6 @@ export async function GET(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  // Increment reads
   supabase.from("posts").update({ reads: (data.reads ?? 0) + 1 }).eq("id", id).then(() => {});
 
   try {

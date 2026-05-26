@@ -44,12 +44,14 @@ export function middleware(req: NextRequest) {
       }
       preflight.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       preflight.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      preflight.headers.set("Access-Control-Allow-Credentials", "true");
       preflight.headers.set("Access-Control-Max-Age", "86400");
       return preflight;
     }
 
     if (ALLOWED_ORIGINS.includes(origin)) {
       res.headers.set("Access-Control-Allow-Origin", origin);
+      res.headers.set("Access-Control-Allow-Credentials", "true");
       res.headers.set("Vary", "Origin");
     }
     res.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
