@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { checkRateLimit } from "@/lib/security";
+import { getSessionAddress, hashApiKey } from "@/lib/auth";
 
 const APTOS_ADDRESS_RE = /^0x[0-9a-f]{1,64}$/i;
 
 export async function GET(req: NextRequest) {
-  const address = req.nextUrl.searchParams.get("address")?.toLowerCase().trim();
-  if (!address) return NextResponse.json({ key: null });
+  const sessionAddress = await getSessionAddress(req);
+  if (!sessionAddress) return NextResponse.json({ key: null });
 
   const { data } = await supabase
     .from("api_keys")
-    .select("key, label, created_at, last_used_at")
-    .eq("owner_address", address)
+    .select("label, created_at, last_used_at")
+    .eq("owner_address", sessionAddress)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -20,28 +21,31 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Require valid session
+  const sessionAddress = await getSessionAddress(req);
+  if (!sessionAddress) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const rl = checkRateLimit(ip, "apikey", 20, 10 * 60 * 1000);
   if (!rl.allowed) {
-    return NextResponse.json({ error: "Rate limit exceeded. Try again later." }, { status: 429 });
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
-  let body: { key?: string; ownerAddress?: string; label?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
+  let body: { key?: string; label?: string } = {};
+  try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
   const { key, label } = body;
-  const ownerAddress = (body.ownerAddress ?? "").toLowerCase().trim();
 
-  if (!key || !ownerAddress) {
+  if (!key) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  if (!APTOS_ADDRESS_RE.test(ownerAddress)) {
-    return NextResponse.json({ error: "Invalid wallet address" }, { status: 400 });
+  if (!APTOS_ADDRESS_RE.test(sessionAddress)) {
+    return NextResponse.json({ error: "Invalid session address" }, { status: 400 });
   }
 
   if (!/^aicc_[0-9a-f]{40}$/.test(key)) {
@@ -49,11 +53,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Replace existing key for this wallet
-  await supabase.from("api_keys").delete().eq("owner_address", ownerAddress);
+  await supabase.from("api_keys").delete().eq("owner_address", sessionAddress);
 
   const { data, error } = await supabase
     .from("api_keys")
-    .insert({ key, owner_address: ownerAddress, label: label ?? "Default" })
+    .insert({ key: await hashApiKey(key), owner_address: sessionAddress, label: label ?? "Default" })
     .select()
     .single();
 
@@ -62,18 +66,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  let body: { ownerAddress?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  // Require valid session
+  const sessionAddress = await getSessionAddress(req);
+  if (!sessionAddress) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
-  const ownerAddress = (body.ownerAddress ?? "").toLowerCase().trim();
-  if (!ownerAddress || !APTOS_ADDRESS_RE.test(ownerAddress)) {
-    return NextResponse.json({ error: "Invalid wallet address" }, { status: 400 });
-  }
-
-  await supabase.from("api_keys").delete().eq("owner_address", ownerAddress);
+  await supabase.from("api_keys").delete().eq("owner_address", sessionAddress);
   return NextResponse.json({ success: true });
 }
