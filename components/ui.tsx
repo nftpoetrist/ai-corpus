@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 /* ─── Wallet section ────────────────────────────────────────────── */
 
@@ -362,10 +363,19 @@ function WalletDropdown() {
 }
 
 /* ─── Nav ─────────────────────────────────────────────────────── */
-export function Nav({ activePage = "" }: { activePage?: string }) {
+export function Nav() {
   const { connected } = useWallet();
   const [showModal, setShowModal] = useState(false);
   const [profileHandle, setProfileHandle] = useState("me");
+  const pathname = usePathname();
+
+  const activePage = pathname.startsWith("/content-discovery")
+    ? "content discovery"
+    : pathname.startsWith("/upload")
+    ? "upload"
+    : pathname.startsWith("/profile")
+    ? "profile"
+    : "";
 
   useEffect(() => {
     const handle = localStorage.getItem("ai_corpus_handle") || localStorage.getItem("ai_corpus_username") || "me";

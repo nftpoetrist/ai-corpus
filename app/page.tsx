@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { GradientText, GlassCard, GradientBorderCard, Nav } from "@/components/ui";
+import { GradientText, GlassCard, GradientBorderCard } from "@/components/ui";
 import { FEED_POSTS, getUploads } from "@/lib/posts";
 import type { Post } from "@/lib/posts";
 
@@ -341,7 +341,6 @@ function Footer() {
 export default function LandingPage() {
   return (
     <main className="min-h-screen">
-      <Nav />
       <Hero />
       <ScrollingStrip />
       <Features />

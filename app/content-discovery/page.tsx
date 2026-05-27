@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRef, useState, useEffect } from "react";
-import { Nav } from "@/components/ui";
 import { toggleSaved, getSavedIds, toggleLiked, getLikedIds } from "@/lib/posts";
 import type { Post } from "@/lib/posts";
 import type { DbPost } from "@/lib/supabase";
@@ -346,6 +345,7 @@ export default function DiscoveryPage() {
   const fetchPosts = async () => {
     try {
       const res = await fetch("/api/posts");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { posts } = await res.json() as { posts: DbPost[] };
       setAllPosts((posts ?? []).map(dbToPost));
     } catch {
@@ -382,7 +382,6 @@ export default function DiscoveryPage() {
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <Nav activePage="content discovery" />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
           <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
             style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid transparent",
@@ -396,7 +395,6 @@ export default function DiscoveryPage() {
   if (allPosts.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <Nav activePage="content discovery" />
         <div style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
           <div style={{ fontSize: 15, marginBottom: 8 }}>No posts yet</div>
           <div style={{ fontSize: 12 }}>Be the first to upload a file to Shelby</div>
@@ -407,7 +405,6 @@ export default function DiscoveryPage() {
 
   return (
     <>
-      <Nav activePage="content discovery" />
       <div className="fixed top-28 left-1/2 -translate-x-1/2 z-40 text-white/60 font-semibold tracking-widest" style={{ fontSize: "1.1rem" }}>
         {currentIndex + 1} / {allPosts.length}
       </div>

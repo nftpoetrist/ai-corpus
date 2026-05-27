@@ -181,7 +181,7 @@ export function toggleLiked(id: string): string[] {
 export function deleteUpload(id: string): UploadedPost[] {
   if (!id) return getUploads();
   const all = getUploads();
-  const next = all.filter(u => u.id === id ? false : true);
+  const next = all.filter(u => u.id !== id);
   if (next.length === all.length) return all; // nothing matched, abort
   localStorage.setItem(UPLOADS_KEY, JSON.stringify(next));
   return next;
