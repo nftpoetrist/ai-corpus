@@ -5,7 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Nav, Tag, Avatar, ShelbyBadge, fmt } from "@/components/ui";
+import { Tag, Avatar, ShelbyBadge, fmt } from "@/components/ui";
 
 const SAMPLE_MD = `
 ## What is Attention?
@@ -81,7 +81,6 @@ export default function PostView() {
 
   return (
     <div className="min-h-screen">
-      <Nav />
       {tipOpen && <TipModal onClose={() => setTipOpen(false)} />}
 
       {/* Top action bar */}

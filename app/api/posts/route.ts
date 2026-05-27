@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getSessionAddress } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -18,9 +19,17 @@ export async function GET(req: NextRequest) {
     .range(from, to);
 
   if (ids) {
-    query = query.in("id", ids.split(",").filter(Boolean));
+    // Saved posts: only return Public posts regardless of who's asking
+    query = query.in("id", ids.split(",").filter(Boolean)).eq("visibility", "Public");
   } else if (author) {
-    query = query.eq("author_address", author);
+    // Author filter: return all visibilities only if session matches, otherwise Public only
+    const sessionAddress = await getSessionAddress(req);
+    const isOwner = sessionAddress?.toLowerCase() === author.toLowerCase();
+    if (!isOwner) {
+      query = query.eq("author_address", author).eq("visibility", "Public");
+    } else {
+      query = query.eq("author_address", author);
+    }
   } else {
     query = query.eq("visibility", "Public");
   }

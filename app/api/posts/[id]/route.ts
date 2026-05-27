@@ -37,7 +37,7 @@ export async function DELETE(
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -45,6 +45,14 @@ export async function GET(
 
   if (error || !data) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
+  }
+
+  // Non-public posts are only readable by their owner (session required)
+  if (data.visibility !== "Public") {
+    const sessionAddress = await getSessionAddress(req);
+    if (!sessionAddress || sessionAddress.toLowerCase() !== data.author_address.toLowerCase()) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
   }
 
   supabase.from("posts").update({ reads: (data.reads ?? 0) + 1 }).eq("id", id).then(() => {});

@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { Nav } from "@/components/ui";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
 type Step = "empty" | "ready" | "scanning" | "scan_failed" | "awaiting_wallet" | "uploading" | "done";
@@ -503,7 +502,9 @@ export default function UploadPage() {
       // Show progress animation while upload runs
       setStep("uploading");
 
-      const result = await fetch("/api/upload", { method: "POST", body: form }).then((r) => r.json());
+      const r = await fetch("/api/upload", { method: "POST", body: form });
+      const result = await r.json();
+      if (!r.ok && !result?.error) throw new Error("Upload failed");
 
       if (result?.error) throw new Error(result.error);
       if (result?.post?.blob_name) setBlobId(result.post.blob_name);
@@ -525,7 +526,6 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
-      <Nav activePage="upload" />
       <input ref={fileInputRef} type="file" accept=".md" className="hidden" onChange={handleFileChange} />
 
       <div className="relative" style={{ width: "min(88vw, 860px)", aspectRatio: "1000 / 560", marginTop: "80px" }}>

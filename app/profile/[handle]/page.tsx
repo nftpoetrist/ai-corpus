@@ -2,7 +2,6 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
-import { Nav } from "@/components/ui";
 import { useWallet, truncateAddress } from "@aptos-labs/wallet-adapter-react";
 
 const SHAPES = ["hex", "diamond", "ring", "pentagon", "star", "octagon", "triangle", "roundsq"];
@@ -347,6 +346,13 @@ function UploadCard({ post, onDelete }: { post: DbPost; onDelete: () => void }) 
   );
 }
 
+const PROFILE_SHAPES = ["hex","diamond","ring","pentagon","star","octagon","triangle","roundsq"];
+const PROFILE_PALETTES: [string,string][] = [
+  ["#7C3AED","#4F46E5"],["#DB2777","#9333EA"],["#0EA5E9","#6366F1"],
+  ["#10B981","#3B82F6"],["#F59E0B","#EF4444"],["#8B5CF6","#EC4899"],
+  ["#06B6D4","#7C3AED"],["#F97316","#A855F7"],
+];
+
 /* ─── Page ──────────────────────────────────────────────────────── */
 export default function ProfilePage() {
   const { connected, account, wallet, signMessage } = useWallet();
@@ -360,7 +366,7 @@ export default function ProfilePage() {
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authChecking, setAuthChecking] = useState(true); // true until first checkSession resolves
+  const [authChecking, setAuthChecking] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [username, setUsername] = useState("");
@@ -369,13 +375,6 @@ export default function ProfilePage() {
   const [handle, setHandle] = useState("");
   const [editingHandle, setEditingHandle] = useState(false);
   const [handleInput, setHandleInput] = useState("");
-
-  const SHAPES = ["hex","diamond","ring","pentagon","star","octagon","triangle","roundsq"];
-  const PALETTES: [string,string][] = [
-    ["#7C3AED","#4F46E5"],["#DB2777","#9333EA"],["#0EA5E9","#6366F1"],
-    ["#10B981","#3B82F6"],["#F59E0B","#EF4444"],["#8B5CF6","#EC4899"],
-    ["#06B6D4","#7C3AED"],["#F97316","#A855F7"],
-  ];
   function dbToPost(p: DbPost): Post {
     const n = parseInt(p.author_address.slice(2, 10) || "0", 16) || 0;
     return {
@@ -383,8 +382,8 @@ export default function ProfilePage() {
       author: {
         name: `${p.author_address.slice(0, 6)}...${p.author_address.slice(-4)}`,
         handle: p.author_address.slice(2, 8),
-        color1: PALETTES[n % 8][0], color2: PALETTES[n % 8][1],
-        shape: SHAPES[n % 8], address: p.author_address,
+        color1: PROFILE_PALETTES[n % 8][0], color2: PROFILE_PALETTES[n % 8][1],
+        shape: PROFILE_SHAPES[n % 8], address: p.author_address,
       },
       reads: String(p.reads), likes: p.likes, tips: p.tips,
       blobId: p.blob_name,
@@ -395,6 +394,7 @@ export default function ProfilePage() {
 
   const fetchUploads = async (address: string) => {
     const res = await fetch(`/api/posts?author=${address}`);
+    if (!res.ok) return;
     const { posts } = await res.json() as { posts: DbPost[] };
     setUploads(posts ?? []);
   };
@@ -402,6 +402,7 @@ export default function ProfilePage() {
   const fetchSaved = async (ids: string[]) => {
     if (!ids.length) { setSavedPosts([]); return; }
     const res = await fetch(`/api/posts?ids=${ids.join(",")}`);
+    if (!res.ok) return;
     const { posts } = await res.json() as { posts: DbPost[] };
     setSavedPosts((posts ?? []).map(dbToPost));
   };
@@ -512,8 +513,8 @@ export default function ProfilePage() {
       // DB stores hash — preserve plaintext in state so user can copy it
       setApiKey({ ...key, key: newKey });
       setApiKeyRevealed(true);
-    } catch {
-      // error
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "Failed to generate API key");
     } finally {
       setApiKeyGenerating(false);
     }
@@ -526,8 +527,8 @@ export default function ProfilePage() {
       await fetch("/api/apikeys", { method: "DELETE" });
       setApiKey(null);
       setApiKeyRevealed(false);
-    } catch {
-      // error
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "Failed to revoke API key");
     } finally {
       setApiKeyGenerating(false);
     }
@@ -573,8 +574,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen">
-      <Nav activePage="profile" />
-
       {/* Cover */}
       <div className="pt-20 relative overflow-hidden" style={{ height: 180, zIndex: 0 }}>
         {/* Base */}
