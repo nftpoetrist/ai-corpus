@@ -583,6 +583,14 @@ export default function ProfilePage() {
     if (isAuthenticated) syncSavedFromServer();
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (tab === "saved") {
+      const ids = getSavedIds();
+      setSavedIds(ids);
+      fetchSaved(ids);
+    }
+  }, [tab]);
+
   // Fetch API key metadata when tab is active and user is authenticated
   useEffect(() => {
     if (tab === "apikey" && isAuthenticated && !apiKey && !apiKeyLoading) {
