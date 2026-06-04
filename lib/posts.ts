@@ -110,8 +110,27 @@ export const MY_UPLOADS: Post[] = [
 ];
 
 export const SAVED_KEY = "ai_corpus_saved_posts";
+export const SAVED_DATA_KEY = "ai_corpus_saved_posts_data";
 export const UPLOADS_KEY = "ai_corpus_uploads";
 export const LIKED_KEY = "ai_corpus_liked_posts";
+
+export function getSavedPostsData(): Post[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(SAVED_DATA_KEY) ?? "[]");
+  } catch { return []; }
+}
+
+export function upsertSavedPostData(post: Post): void {
+  const current = getSavedPostsData();
+  const filtered = current.filter(p => p.id !== post.id);
+  localStorage.setItem(SAVED_DATA_KEY, JSON.stringify([post, ...filtered]));
+}
+
+export function removeSavedPostData(id: string): void {
+  const current = getSavedPostsData();
+  localStorage.setItem(SAVED_DATA_KEY, JSON.stringify(current.filter(p => p.id !== id)));
+}
 
 export type UploadedPost = {
   id: string;

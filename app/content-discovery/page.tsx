@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRef, useState, useEffect } from "react";
-import { toggleSaved, getSavedIds, toggleLiked, getLikedIds } from "@/lib/posts";
+import { toggleSaved, getSavedIds, toggleLiked, getLikedIds, upsertSavedPostData, removeSavedPostData } from "@/lib/posts";
 import type { Post } from "@/lib/posts";
 import type { DbPost } from "@/lib/supabase";
 import { TipModal } from "@/components/TipModal";
@@ -105,12 +105,14 @@ function ActionButtons({ post, isOwned, onDelete }: { post: Post; isOwned: boole
     toggleSaved(post.id);
     setSaved(nextSaved);
     if (nextSaved) {
+      upsertSavedPostData(post);
       fetch("/api/saved", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ postId: post.id }),
       }).catch(() => {});
     } else {
+      removeSavedPostData(post.id);
       fetch(`/api/saved?id=${post.id}`, { method: "DELETE" }).catch(() => {});
     }
   };

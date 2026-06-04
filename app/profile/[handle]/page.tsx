@@ -69,7 +69,7 @@ function ProfileAvatar({ address, size = 80 }: { address: string; size?: number 
     </svg>
   );
 }
-import { getSavedIds, toggleSaved, SAVED_KEY } from "@/lib/posts";
+import { getSavedIds, toggleSaved, SAVED_KEY, getSavedPostsData, removeSavedPostData } from "@/lib/posts";
 import type { Post } from "@/lib/posts";
 import type { DbPost } from "@/lib/supabase";
 
@@ -399,32 +399,14 @@ export default function ProfilePage() {
     setUploads(posts ?? []);
   };
 
-  const fetchSaved = async (ids: string[]) => {
-    if (!ids.length) { setSavedPosts([]); return; }
-    const res = await fetch(`/api/posts?ids=${ids.join(",")}`);
-    if (!res.ok) return;
-    const { posts } = await res.json() as { posts: DbPost[] };
-    setSavedPosts((posts ?? []).map(dbToPost));
-  };
-
-  const syncSavedFromServer = async () => {
-    try {
-      const res = await fetch("/api/saved");
-      if (!res.ok) return;
-      const { saved } = await res.json() as { saved: { post_id: string }[] };
-      const serverIds = (saved ?? []).map((s: { post_id: string }) => s.post_id);
-      const localIds = getSavedIds();
-      const merged = Array.from(new Set([...localIds, ...serverIds]));
-      localStorage.setItem(SAVED_KEY, JSON.stringify(merged));
-      setSavedIds(merged);
-      fetchSaved(merged);
-    } catch {}
+  const loadSavedPosts = () => {
+    const posts = getSavedPostsData();
+    setSavedPosts(posts);
+    setSavedIds(posts.map(p => p.id));
   };
 
   useEffect(() => {
-    const ids = getSavedIds();
-    setSavedIds(ids);
-    fetchSaved(ids);
+    loadSavedPosts();
     const savedName = localStorage.getItem("ai_corpus_username") ?? "";
     const savedHandle = localStorage.getItem("ai_corpus_handle") ?? "";
     setUsername(savedName);
@@ -570,8 +552,9 @@ export default function ProfilePage() {
   };
 
   const handleUnsave = (id: string) => {
-    const next = savedIds.filter(x => x !== id);
-    setSavedIds(next);
+    toggleSaved(id);
+    removeSavedPostData(id);
+    setSavedIds(prev => prev.filter(x => x !== id));
     setSavedPosts(prev => prev.filter(p => p.id !== id));
   };
 
@@ -580,15 +563,7 @@ export default function ProfilePage() {
   const initials = shortAddress ? shortAddress.slice(2, 4).toUpperCase() : "?";
 
   useEffect(() => {
-    if (isAuthenticated) syncSavedFromServer();
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (tab === "saved") {
-      const ids = getSavedIds();
-      setSavedIds(ids);
-      fetchSaved(ids);
-    }
+    if (tab === "saved") loadSavedPosts();
   }, [tab]);
 
   // Fetch API key metadata when tab is active and user is authenticated
