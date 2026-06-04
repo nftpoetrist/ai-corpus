@@ -69,7 +69,7 @@ function ProfileAvatar({ address, size = 80 }: { address: string; size?: number 
     </svg>
   );
 }
-import { getSavedIds, toggleSaved } from "@/lib/posts";
+import { getSavedIds, toggleSaved, SAVED_KEY } from "@/lib/posts";
 import type { Post } from "@/lib/posts";
 import type { DbPost } from "@/lib/supabase";
 
@@ -407,6 +407,20 @@ export default function ProfilePage() {
     setSavedPosts((posts ?? []).map(dbToPost));
   };
 
+  const syncSavedFromServer = async () => {
+    try {
+      const res = await fetch("/api/saved");
+      if (!res.ok) return;
+      const { saved } = await res.json() as { saved: { post_id: string }[] };
+      const serverIds = (saved ?? []).map((s: { post_id: string }) => s.post_id);
+      const localIds = getSavedIds();
+      const merged = Array.from(new Set([...localIds, ...serverIds]));
+      localStorage.setItem(SAVED_KEY, JSON.stringify(merged));
+      setSavedIds(merged);
+      fetchSaved(merged);
+    } catch {}
+  };
+
   useEffect(() => {
     const ids = getSavedIds();
     setSavedIds(ids);
@@ -564,6 +578,10 @@ export default function ProfilePage() {
   const address = account?.address?.toString() ?? "";
   const shortAddress = address ? truncateAddress(address) : "";
   const initials = shortAddress ? shortAddress.slice(2, 4).toUpperCase() : "?";
+
+  useEffect(() => {
+    if (isAuthenticated) syncSavedFromServer();
+  }, [isAuthenticated]);
 
   // Fetch API key metadata when tab is active and user is authenticated
   useEffect(() => {
