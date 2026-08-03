@@ -5,7 +5,7 @@ let _client: ShelbyNodeClient | null = null;
 
 function getClient(): ShelbyNodeClient {
   if (!_client) {
-    _client = new ShelbyNodeClient({ network: Network.SHELBYNET });
+    _client = new ShelbyNodeClient({ network: Network.SHELBYNET, locationHint: "shelbynet-1" });
   }
   return _client;
 }
